@@ -1,0 +1,95 @@
+from github import Github
+import os
+import sys
+import time
+import struct
+import requests
+import subprocess
+from threading import Thread
+from datetime import datetime
+from ctypes import (CDLL, get_errno)
+from ctypes.util import find_library
+from pydrive.drive import GoogleDrive
+from pydrive.auth import GoogleAuth
+# ---------------------------------------------------------------------------------
+# Upload file to Github.
+# If file exit in Github -> Error
+# ---------------------------------------------------------------------------------
+def upload_file_github(token, repo_name, file_to_upload):
+    g = Github(token)   # authentication
+    repo = g.get_repo(repo_name)
+
+    # Read file content
+    with open(file_to_upload, 'r') as file:
+        content = file.read()
+
+    try:
+        repo.create_file(file_to_upload, "new file", content, branch = "main")
+        error = 0
+    except:
+        error = 1
+
+    return error
+
+def connected_to_internet(url='http://www.example.com/', timeout=5):
+    try:
+        _ = requests.head(url=url, timeout=timeout)
+        return True
+    except requests.ConnectionError:
+        print('No internet connection available.')
+    return False
+
+
+def upload_file(arg):
+    if connected_to_internet():
+        # print(f'Uploading file {arg}')
+        gauth = GoogleAuth()
+        drive = GoogleDrive(gauth)
+        gfile = drive.CreateFile({'parents': [{'id': '1zokEgmJvQJ2r8zlXgmaIT1hzbvnYAy02'}]})
+        gfile.SetContentFile(arg)
+        gfile.Upload()
+        with open('ble_uploads.log', 'a+') as fu:
+            fu.write(f'{datetime.now()} | upload file {arg}\n')
+
+
+# INICIAR SESION
+def login(path_credentials):
+    gauth = GoogleAuth()
+    gauth.LoadCredentialsFile(path_credentials)
+
+    if gauth.access_token_expired:
+        gauth.Refresh()
+    else:
+        gauth.Authorize()
+
+    gauth.SaveCredentialsFile(path_credentials)
+    credentials = GoogleDrive(gauth)
+    return credentials
+
+# SUBIR UN ARCHIVO A DRIVE
+def subir_archivo(path_credentials, ruta_archivo, id_folder):
+    drive = login(path_credentials)
+    archivo = drive.CreateFile({'parents': [{"kind": "drive#fileLink",\
+                                                    "id": id_folder}]})
+    archivo['title'] = ruta_archivo.split("/")[-1]
+    archivo.SetContentFile(ruta_archivo)
+    archivo.Upload()
+
+if __name__ == '__main__':
+    token = "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"
+    repo_name = "sergiolluvap/test_public"
+    file_to_upload = 'file3.txt'
+    path_credentials = "credentials_module.json"
+
+    ruta_archivo = 'main.py'
+    id_folder = '1-aNT-KVVx2yYadkgF2ySYXZMGZ1SV6qI'
+    id_drive = '1LVdc-DUwr30kfrA30cVO3K92RVh56pmw'
+
+    subir_archivo(path_credentials, ruta_archivo, id_folder)
+
+    err = upload_file_github(token, repo_name, file_to_upload)
+    print(err)
+
+    # If file upload to Github (no error) -> Delete file
+    if err == 0:
+        os.remove(file_to_upload)
